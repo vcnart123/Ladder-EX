@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>爬梯子小遊戲 (最高20人 / 60階)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        h1 { color: #333; margin-bottom: 10px; }
+        .setup-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        input, button {
+            padding: 10px 15px;
+            font-size: 16px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            margin: 5px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            border: none;
+            transition: 0.3s;
+        }
+        button:hover { background-color: #45a049; }
+        
+        .game-scroll-wrapper {
+            max-width: 95vw;
+            overflow-x: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: none;
+        }
+        #game-zone {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .row-container {
+            display: flex;
+            justify-content: flex-start;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .item-wrapper {
+            text-align: center;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .start-btn {
+            background-color: #008CBA;
+            padding: 8px 5px;
+            font-size: 13px;
+            width: 80%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .start-btn:hover { background-color: #007bb5; }
+        .text-label {
+            font-size: 14px;
+            word-break: break-all;
+            padding: 0 5px;
+            margin-top: 5px;
+        }
+        #canvas-container {
+            position: relative;
+            margin: 10px 0;
+        }
+        canvas {
+            background-color: #fafafa;
+            border-left: 1px solid #ddd;
+            border-right: 1px solid #ddd;
+        }
+        #result-box {
+            margin-top: 15px;
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+            min-height: 30px;
+            text-align: center;
+        }
+        .table-wrapper {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 15px;
+            border: 1px solid #eee;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 8px; border: 1px solid #ddd; text-align: center; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+
+    <h1>🪜 爬梯子抽籤小遊戲 (60階地獄密度版)</h1>
+
+    <div class="setup-container" id="setup-box">
+        <label for="player-count">請輸入參與人數 (2 - 20人)：</label>
+        <input type="number" id="player-count" min="2" max="20" value="6">
+        <button onclick="initInputs()">確定人數</button>
+        
+        <div class="table-wrapper" id="table-box" style="display:none;">
+            <div id="inputs-area"></div>
+        </div>
+        <div id="submit-btn-area"></div>
+    </div>
+
+    <div class="game-scroll-wrapper" id="game-wrapper">
+        <div id="game-zone">
+            <div id="buttons-row" class="row-container"></div>
+            <div id="names-row" class="row-container"></div>
+            
+            <div id="canvas-container">
+                <canvas id="ladderCanvas"></canvas>
+            </div>
+            
+            <div id="targets-row" class="row-container"></div>
+            <div id="result-box"></div>
+            
+            <button onclick="resetGame()" style="background-color: #f44336; margin-top: 20px; width: 200px;">重新設定</button>
+        </div>
+    </div>
+
+<script>
+    let count = 0;
+    let startNames = [];
+    let endTargets = [];
+    let matrix = []; 
+    const canvas = document.getElementById('ladderCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // 尺寸與地獄級 60 階設定
+    const colSpacing = 80; 
+    const cHeight = 800;   // 🚀 拉高畫布至 800px，容納 60 階橫線
+    let cWidth = 0;
+    const steps = 60;      // 🚀 密集度再翻倍：高達 60 階！
+
+    function initInputs() {
+        count = parseInt(document.getElementById('player-count').value);
+        if (count < 2 || count > 20 || isNaN(count)) {
+            alert("請輸入 2 到 20 之間的數字");
+            return;
+        }
+
+        let html = `<table><tr><th>起點 (按鈕名字)</th><th>終點 (目標/獎品)</th></tr>`;
+        for (let i = 0; i < count; i++) {
+            html += `<tr>
+                <td><input type="text" class="start-input" value="玩家 ${i+1}"></td>
+                <td><input type="text" class="end-input" value="獎品 ${String.fromCharCode(65 + (i % 26))}${i >= 26 ? Math.floor(i/26) : ''}"></td>
+            </tr>`;
+        }
+        html += `</table>`;
+        
+        document.getElementById('table-box').style.display = 'block';
+        document.getElementById('inputs-area').innerHTML = html;
+        document.getElementById('submit-btn-area').innerHTML = `<button onclick="startGame()" style="margin-top:15px; background-color: #ff9800; width: 100%;">生成 60階 超密梯子</button>`;
+    }
+
+    function startGame() {
+        const startInputs = document.querySelectorAll('.start-input');
+        const endInputs = document.querySelectorAll('.end-input');
+        
+        startNames = Array.from(startInputs).map(input => input.value || "未命名");
+        endTargets = Array.from(endInputs).map(input => input.value || "沒中獎");
+
+        document.getElementById('setup-box').style.display = 'none';
+        document.getElementById('game-wrapper').style.display = 'block';
+
+        cWidth = colSpacing * count;
+        canvas.width = cWidth;
+        canvas.height = cHeight;
+
+        createTopAndBottomRows();
+        generateLadderMatrix();
+        drawLadder();
+    }
+
+    function createTopAndBottomRows() {
+        const btnRow = document.getElementById('buttons-row');
+        const nameRow = document.getElementById('names-row');
+        const targetRow = document.getElementById('targets-row');
+        
+        btnRow.innerHTML = '';
+        nameRow.innerHTML = '';
+        targetRow.innerHTML = '';
+
+        btnRow.style.width = `${cWidth}px`;
+        nameRow.style.width = `${cWidth}px`;
+        targetRow.style.width = `${cWidth}px`;
+
+        for (let i = 0; i < count; i++) {
+            let itemWidthStr = `${colSpacing}px`;
+
+            let wrap1 = document.createElement('div');
+            wrap1.className = 'item-wrapper';
+            wrap1.style.width = itemWidthStr;
+            let btn = document.createElement('button');
+            btn.className = 'start-btn';
+            btn.innerText = `出發`;
+            btn.onclick = () => tracePath(i);
+            wrap1.appendChild(btn);
+            btnRow.appendChild(wrap1);
+
+            let wrap2 = document.createElement('div');
+            wrap2.className = 'item-wrapper';
+            wrap2.style.width = itemWidthStr;
+            let nameDiv = document.createElement('div');
+            nameDiv.className = 'text-label';
+            nameDiv.innerText = startNames[i];
+            wrap2.appendChild(nameDiv);
+            nameRow.appendChild(wrap2);
+
+            let wrap3 = document.createElement('div');
+            wrap3.className = 'item-wrapper';
+            wrap3.style.width = itemWidthStr;
+            let targetDiv = document.createElement('div');
+            targetDiv.className = 'text-label';
+            targetDiv.innerText = endTargets[i];
+            wrap3.appendChild(targetDiv);
+            targetRow.appendChild(wrap3);
+        }
+    }
+
+    function generateLadderMatrix() {
+        matrix = Array.from({length: steps}, () => Array(count - 1).fill(0));
+        
+        for (let r = 1; r < steps - 1; r++) {
+            for (let c = 0; c < count - 1; c++) {
+                // 維持高機率生成橫線
+                if (Math.random() > 0.35) {
+                    if (c === 0 || matrix[r][c-1] === 0) {
+                        matrix[r][c] = 1;
+                    }
+                }
+            }
+        }
+    }
+
+    function getX(index) {
+        return colSpacing * index + (colSpacing / 2);
+    }
+
+    function drawLadder() {
+        ctx.clearRect(0, 0, cWidth, cHeight);
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 1.5; // 線條再稍微調細，讓 60 階的高密度畫面依然精細不凌亂
+
+        // 畫垂直線
+        for (let i = 0; i < count; i++) {
+            let x = getX(i);
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, cHeight);
+            ctx.stroke();
+        }
+
+        // 畫水平橫線
+        let rowHeight = cHeight / steps;
+        for (let r = 0; r < steps; r++) {
+            for (let c = 0; c < count - 1; c++) {
+                if (matrix[r][c] === 1) {
+                    let x1 = getX(c);
+                    let x2 = getX(c + 1);
+                    let y = rowHeight * r + rowHeight / 2;
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y);
+                    ctx.lineTo(x2, y);
+                    ctx.stroke();
+                }
+            }
+        }
+    }
+
+    let isAnimating = false;
+    function tracePath(startIndex) {
+        if (isAnimating) return; 
+        isAnimating = true;
+        document.getElementById('result-box').innerHTML = `🌪️ <span style="color:#008CBA;">${startNames[startIndex]}</span> 正在超高速橫移中...`;
+
+        let currentLines = []; 
+        let currCol = startIndex;
+        let rowHeight = cHeight / steps;
+        
+        let y = 0;
+        currentLines.push({x: getX(currCol), y: y});
+
+        for (let r = 0; r < steps; r++) {
+            let midY = rowHeight * r + rowHeight / 2;
+            
+            currentLines.push({x: getX(currCol), y: midY});
+
+            if (currCol < count - 1 && matrix[r][currCol] === 1) {
+                currCol++;
+                currentLines.push({x: getX(currCol), y: midY});
+            }
+            else if (currCol > 0 && matrix[r][currCol - 1] === 1) {
+                currCol--;
+                currentLines.push({x: getX(currCol), y: midY});
+            }
+        }
+        currentLines.push({x: getX(currCol), y: cHeight});
+
+        animatePath(currentLines, 0, () => {
+            document.getElementById('result-box').innerHTML = `🎉 【${startNames[startIndex]}】 的結果是 👉 <span style="color:#e74c3c; font-size:24px;">${endTargets[currCol]}</span>`;
+            isAnimating = false;
+        });
+    }
+
+    function animatePath(points, index, callback) {
+        if (index >= points.length - 1) {
+            callback();
+            return;
+        }
+
+        let p1 = points[index];
+        let p2 = points[index + 1];
+        let startX = p1.x;
+        let startY = p1.y;
+        let endX = p2.x;
+        let endY = p2.y;
+        
+        let progress = 0;
+        // 🚀 60階高難度下，速度大幅調快到 0.65，防止走線走太久
+        const speed = 0.65; 
+
+        function step() {
+            progress += speed;
+            if (progress > 1) progress = 1;
+
+            drawLadder();
+
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 3.5;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            
+            ctx.beginPath();
+            ctx.moveTo(points[0].x, points[0].y);
+            for(let i=0; i<=index; i++){
+                ctx.lineTo(points[i].x, points[i].y);
+            }
+            let curX = startX + (endX - startX) * progress;
+            let curY = startY + (endY - startY) * progress;
+            ctx.lineTo(curX, curY);
+            ctx.stroke();
+
+            if (progress < 1) {
+                requestAnimationFrame(step);
+            } else {
+                animatePath(points, index + 1, callback);
+            }
+        }
+        requestAnimationFrame(step);
+    }
+
+    function resetGame() {
+        if (isAnimating) return;
+        document.getElementById('setup-box').style.display = 'block';
+        document.getElementById('game-wrapper').style.display = 'none';
+        document.getElementById('result-box').innerText = '';
+    }
+</script>
+
+</body>
+</html>
